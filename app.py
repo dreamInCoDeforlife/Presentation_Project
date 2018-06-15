@@ -17,7 +17,7 @@ from flask import json
 from flask import request
 from flask import Flask, Response
 from flask_cors import CORS
-
+import nlp
 class FrequencySummarizer:
     '''
     FrequencySummarizer Class used to find the maximum repetition of words in a particular context
@@ -83,6 +83,7 @@ class Analyze:
         self._place_interest = []
         self._selected_images = []
         self._selected_images_url = []
+        self._nlp_selected_images = []
     
     
     def sentiment_analysis(self)->int:
@@ -102,11 +103,12 @@ class Analyze:
                     if (chunk.label() not in new_list):
                         new_list[chunk.label()] = ' '.join(c[0] for c in chunk).lower()
                     else:
-                        temporary = [new_list[chunk.label()]]
+                        temporary = new_list[chunk.label()]
+                        if type(temporary) != list:
+                            temporary = [new_list[chunk.label()]]
                         temporary.append((' '.join(c[0] for c in chunk)).lower())
                         new_list[chunk.label()] = temporary
         self._place_interest = new_list
-        print(self._place_interest)
     
     def keyword_extraction(self):
         new_keyword_find = Rake()
@@ -127,28 +129,33 @@ class Analyze:
                     print('{}:\n\t{}'.format(item['title'],item['link']))
                     self._selected_images_url.append(item['link'])
                     
+    def search_repeats(self):
+        seen = []
+        
+        for x in self._selected_images:
+            if x not in seen:
+                seen.append(x)
+        self._selected_images = seen
     
     def image_list(self):
-        temporary = []
+        temp_nlp_select = self._nlp_selected_images
         temporary_ranked = []
-        for val in self._place_interest.values():
-            if type(val) == list:
-                for i in val:
-                    temporary.append(i)
-            else:
-                temporary.append(val)
-        
         for val in self._ranked_words:
-            temporary_ranked.append(val[1])
-        self._selected_images.append(temporary_ranked[0])
+            if (val[0] > 14.0):
+                temporary_ranked.append(val[1])
         
-        for val_temp in temporary:
+        count = 0
+        
+        for val_temp in temp_nlp_select:
+            count = 0
             for val_temp_ranked in temporary_ranked:
                 try:
-                    if val_temp in val_temp_ranked:
+                    if val_temp in val_temp_ranked and count  == 0:
                         self._selected_images.append(val_temp_ranked)
+                        count = 1
                 except TypeError:
                     print("ok")
+        
 
 class Generate_Presentation:
     
@@ -170,48 +177,49 @@ class Generate_Presentation:
         pic = slide.shapes.add_picture("test.png", left, top)
         prs.save("text.pptx")
         
-
 app = Flask(__name__)
 CORS(app)
 
 @app.route('/', methods = ['GET', 'POST'])
 def run_app():
+    #return (str)([['Hurricane Carmen was the most intense tropical cyclone of the 1974 Atlantic hurricane season.\n', 'A destructive and widespread storm, Carmen originated as a tropical disturbance that traveled westward from Africa, spawning a tropical depression east of the Lesser Antilles on August 29.', 'The name Carmen was retired from the list of Atlantic tropical cyclone names in 1975.'], ['1.jpg', '2.jpg', '3.jpg']])
     data = request.form.to_dict()
-    text = data['value']
+    text = (str)(data['value'])
+    #return((str)(data['value']))
     new_analyze = Analyze(text)
     #new_analyze._sentiment_analysis()
     new_analyze.place_interest()
     new_analyze.keyword_extraction()
     new_analyze.image_list()
     new_analyze.google_search()
-    new_summarize = Article("http://www.bbc.com/news/world-asia-43933332")
-    new_summarize.download()
-    new_summarize.parse()
-    new_summarize.text = text
-    new_summarize.nlp()
-    summarize = new_summarize.summary
     
-    return([summarize, new_analyze._selected_images_url])
+    #text = "Hurricane Carmen was the most intense tropical cyclone of the 1974 Atlantic hurricane season. A destructive and widespread storm, Carmen originated as a tropical disturbance that traveled westward from Africa, spawning a tropical depression east of the Lesser Antilles on August 29. Moving through the Caribbean Sea, it quickly strengthened to a Category 4 hurricane on the Saffir–Simpson Hurricane Scale, and made landfall on the Yucatán Peninsula. It turned north into the Gulf of Mexico, re-intensified, and made a second landfall in the marshland of southern Louisiana, dissipating over eastern Texas on September 10. Tropical cyclone watches and warnings had been issued for the storm, and around 100,000 residents left their homes and sought shelter. Damage was lighter than first feared, but the sugar industry suffered substantial losses. The hurricane killed 8 people and caused damage valued at $162 million. The name Carmen was retired from the list of Atlantic tropical cyclone names in 1975."
+    new_summarize = nlp.summarize("http://www.bbc.com/news/world-asia-43933332", "Hurrican Carmen", text,3)
+    #return ("[['Hurricane Carmen was the most intense tropical cyclone of the 1974 Atlantic hurricane season.', 'A destructive and widespread storm, Carmen originated as a tropical disturbance that traveled westward from Africa, spawning a tropical depression east of the Lesser Antilles on August 29.', 'The name Carmen was retired from the list of Atlantic tropical cyclone names in 1975.'], ['https://bloximages.newyork1.vip.townnews.com/richmond.com/content/tncms/assets/v3/editorial/f/d6/fd64a259-8156-5845-89df-a490af85ae5f/592722b7c6e3f.image.png', 'https://scioly.org/wiki/images/c/c5/Saffir-Simpson_Hurricane_Wind_Scale_%282014%29..png', 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/1974_Atlantic_hurricane_season_summary_map.png/1200px-1974_Atlantic_hurricane_season_summary_map.png']]")
+    return((str)([(str)(new_summarize), (str)(new_analyze._selected_images_url)]))
 
+app.run(debug = True)
+'''
 if __name__ == "__main__":
+    
     text = "Hurricane Carmen was the most intense tropical cyclone of the 1974 Atlantic hurricane season. A destructive and widespread storm, Carmen originated as a tropical disturbance that traveled westward from Africa, spawning a tropical depression east of the Lesser Antilles on August 29. Moving through the Caribbean Sea, it quickly strengthened to a Category 4 hurricane on the Saffir–Simpson Hurricane Scale, and made landfall on the Yucatán Peninsula. It turned north into the Gulf of Mexico, re-intensified, and made a second landfall in the marshland of southern Louisiana, dissipating over eastern Texas on September 10. Tropical cyclone watches and warnings had been issued for the storm, and around 100,000 residents left their homes and sought shelter. Damage was lighter than first feared, but the sugar industry suffered substantial losses. The hurricane killed 8 people and caused damage valued at $162 million. The name Carmen was retired from the list of Atlantic tropical cyclone names in 1975."
     new_analyze = Analyze(text)
     #new_analyze._sentiment_analysis()
     new_analyze.place_interest()
     new_analyze.keyword_extraction()
     new_analyze.image_list()
-    print(new_analyze._ranked_words)
-    print(new_analyze._selected_images_url)
-    '''
-    new_analyze.google_search()
-    new_summarize = Article("http://www.bbc.com/news/world-asia-43933332")
-    new_summarize.download()
-    new_summarize.parse()
-    new_summarize.text = text
-    new_summarize.nlp()
-    summarize = new_summarize.summary
     
-    print([summarize, new_analyze._selected_images_url])    
+    new_analyze._nlp_selected_images = nlp.keywords(text).keys()
+    new_analyze.image_list()
+    print(new_analyze._nlp_selected_images)
+    print(new_analyze._selected_images)
+    new_analyze.search_repeats()
+    new_analyze.google_search()
+    print(new_analyze._ranked_words)
+    new_summarize = nlp.summarize("http://www.bbc.com/news/world-asia-43933332", "Hurrican Carmen", text,3)
+    print([new_summarize, new_analyze._selected_images_url])
     #app.run(debug = True)
 
-    '''
+
+#"[['Hurricane Carmen was the most intense tropical cyclone of the 1974 Atlantic hurricane season.', 'A destructive and widespread storm, Carmen originated as a tropical disturbance that traveled westward from Africa, spawning a tropical depression east of the Lesser Antilles on August 29.', 'The name Carmen was retired from the list of Atlantic tropical cyclone names in 1975.'], ['https://bloximages.newyork1.vip.townnews.com/richmond.com/content/tncms/assets/v3/editorial/f/d6/fd64a259-8156-5845-89df-a490af85ae5f/592722b7c6e3f.image.png', 'https://scioly.org/wiki/images/c/c5/Saffir-Simpson_Hurricane_Wind_Scale_%282014%29..png', 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/1974_Atlantic_hurricane_season_summary_map.png/1200px-1974_Atlantic_hurricane_season_summary_map.png']]"
+'''
